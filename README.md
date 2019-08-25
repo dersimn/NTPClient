@@ -1,8 +1,9 @@
 # NTPClient
 
-[![Build Status](https://travis-ci.org/arduino-libraries/NTPClient.svg?branch=master)](https://travis-ci.org/arduino-libraries/NTPClient)
+This fork adds API calls to return the epoch timestamp in milliseconds and UTC.
 
-Connect to a NTP server, here is how:
+
+Examples for connecting to a NTP server:
 
 ```cpp
 #include <NTPClient.h>
@@ -42,6 +43,16 @@ void loop() {
 
   Serial.println(timeClient.getFormattedTime());
 
+  // Unix UTC epoch in milliseconds:
+  print64(timeClient.getEpochTimeMillisUTC())
+
   delay(1000);
+}
+
+// Serial has trouble with 64-bit ints, so we need a custom function
+void print64(uint64_t value) {
+    if(value >= 10)
+      print64(value / 10);
+    Serial.print((uint32_t)(value % 10));
 }
 ```

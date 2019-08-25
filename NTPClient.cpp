@@ -135,22 +135,32 @@ bool NTPClient::updated() {
   return (_currentEpoc != 0);
 }
 
+unsigned long NTPClient::getEpochTimeUTC() const {
+  return _currentEpoc +                           // last time returned via server
+         ((millis() - _lastUpdate +               // millis since last update
+         (_currentFraction / FRACTIONSPERMILLI) + // add the millis that have passed since the last update
+         500) / 1000);                            // add 500 to round up to nearest second if ms fraction is >=500
+}
+
+unsigned long long NTPClient::getEpochMillisUTC() {
+  unsigned long long epoch;
+
+  epoch = _currentEpoc;                          // last time returned via server
+  epoch *= 1000;                                 // convert to millis
+  epoch += _currentFraction / FRACTIONSPERMILLI; // add the fraction from the server
+  epoch += millis() - _lastUpdate;               // add the millis that have passed since the last update
+
+  return epoch;
+}
+
 unsigned long NTPClient::getEpochTime() const {
-  return this->_timeOffset + // User offset
-         this->_currentEpoc + // Epoc returned by the NTP server
-         ((millis() - this->_lastUpdate + (_currentFraction / FRACTIONSPERMILLI)) / 1000); // Time since last update
+  // add user offset to convert UTC to local time
+  return _timeOffset + getEpochTimeUTC();
 }
 
 unsigned long long NTPClient::getEpochMillis() {
-  unsigned long long epoch;
-
-  epoch = this->_timeOffset;                     // user offset
-  epoch += _currentEpoc;                         // last time returned via server
-  epoch *= 1000;                                 // convert to millis
-  epoch += _currentFraction / FRACTIONSPERMILLI; // add the fraction from the server
-  epoch += millis() - this->_lastUpdate;         // add the millis that have passed since the last update
-
-  return epoch;
+  // add user offset to convert UTC to local time
+  return _timeOffset * 1000 + getEpochMillisUTC();
 }
 
 int NTPClient::getDay() const {

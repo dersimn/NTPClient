@@ -115,14 +115,24 @@ class NTPClient {
     String getFormattedTime() const;
 
     /**
-     * @return time in seconds since Jan. 1, 1970
+     * @return local time in seconds since Jan. 1, 1970
      */
     unsigned long getEpochTime() const;
 
     /**
-     * @return time in milliseconds since Jan. 1, 1970
+     * @return local time in milliseconds since Jan. 1, 1970
      */
     unsigned long long getEpochMillis();
+
+    /**
+     * @return UTC time in seconds since Jan. 1, 1970
+     */
+    unsigned long getEpochTimeUTC() const;
+
+    /**
+     * @return UTC time in milliseconds since Jan. 1, 1970
+     */
+    unsigned long long getEpochMillisUTC();
 
     /**
      * Stops the underlying UDP client
