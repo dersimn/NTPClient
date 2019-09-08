@@ -86,9 +86,9 @@ bool NTPClient::checkResponse() {
     // Get the transmit timestamp (NTP server time when packet was sent)
     highWord = word(_packetBuffer[40], _packetBuffer[41]);
     lowWord = word(_packetBuffer[42], _packetBuffer[43]);
-    // combine the four bytes (two words) into a long integer
-    // this is NTP time (seconds since Jan 1 1900):
+    // combine the 2 words (4 bytes) into a long integer to form  NTP time (seconds since Jan 1 1900)
     unsigned long currentSecs = (highWord << 16 | lowWord);
+    // Now get the fraction of seconds in the next 4 bytes
     highWord = word(_packetBuffer[44], _packetBuffer[45]);
     lowWord = word(_packetBuffer[46], _packetBuffer[47]);
     unsigned long currentFraction = highWord << 16 | lowWord;
@@ -181,7 +181,7 @@ unsigned long NTPClient::getEpochTimeUTC() const {
 }
 
 unsigned long long NTPClient::getEpochMillisUTC() {
-  unsigned long long epoch = _currentEpoc * 1000; // last time returned via server, in millis
+  unsigned long long epoch = (unsigned long long)_currentEpoc * 1000; // last time returned via server, in millis
   epoch += _currentFraction / FRACTIONSPERMILLI;  // add the fraction from the server
   epoch += millis() - _lastUpdate;                // add the millis that have passed since the last update
   return epoch;
@@ -194,7 +194,7 @@ unsigned long NTPClient::getEpochTime() const {
 
 unsigned long long NTPClient::getEpochMillis() {
   // add user offset to convert UTC to local time
-  return _timeOffset * 1000 + getEpochMillisUTC();
+  return getEpochMillisUTC() + _timeOffset * 1000;
 }
 
 int NTPClient::getDay() const {
