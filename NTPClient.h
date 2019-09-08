@@ -22,11 +22,17 @@ class NTPClient {
     int           _port           = NTP_DEFAULT_LOCAL_PORT;
     long          _timeOffset     = 0;
 
-    unsigned int  _retryInterval  = 1000;   // In ms
+    unsigned int  _retryInterval  = 10000;   // In ms
     unsigned long _updateInterval = 60000;  // In ms
 
     unsigned long _currentEpoc    = 0;      // In s
     unsigned long _currentFraction = 0;     // In 1/(2^32) s
+    unsigned long _referenceSecs = 0;
+    unsigned long _referenceFraction = 0;
+    unsigned long _originSecs = 0;
+    unsigned long _originFraction = 0;
+
+
     unsigned long _lastUpdate     = 0;      // In ms
     unsigned long _lastRequest    = 0;      // IN ms
 
