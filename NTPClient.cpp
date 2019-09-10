@@ -19,8 +19,8 @@
  * SOFTWARE.
  */
 
-#include "NTPClient.h"
-//#define DEBUG_NTPClient 1
+//#include "NTPClient.h"
+#define DEBUG_NTPClient 1
 
 NTPClient::NTPClient(UDP& udp) {
   this->_udp            = &udp;
@@ -61,66 +61,97 @@ void NTPClient::begin(int port) {
 
 bool NTPClient::checkResponse() {
   bool updated = false;
-  if (this->_udp->parsePacket() == NTP_PACKET_SIZE) {
-    this->_lastUpdate = millis();
-    this->_udp->read(_packetBuffer, NTP_PACKET_SIZE);
+  if (_udp->parsePacket() == NTP_PACKET_SIZE) {
+    _lastUpdate = millis();
+    _udp->read(_packetBuffer, NTP_PACKET_SIZE);
 
     unsigned long highWord, lowWord;
 
     // Get the reference timestamp (time server clock was last set)
     highWord = word(_packetBuffer[16], _packetBuffer[17]);
     lowWord = word(_packetBuffer[18], _packetBuffer[19]);
-    this->_referenceSecs = (highWord << 16 | lowWord) - SEVENZYYEARS;
+    _referenceSecs = (highWord << 16 | lowWord) - SEVENZYYEARS;
     highWord = word(_packetBuffer[20], _packetBuffer[21]);
     lowWord = word(_packetBuffer[22], _packetBuffer[23]);
-    this->_referenceFraction = highWord << 16 | lowWord;
+    _referenceFraction = highWord << 16 | lowWord;
 
-    // Get the origin timestamp (time we sent the last request)
-    highWord = word(this->_packetBuffer[24], this->_packetBuffer[25]);
-    lowWord = word(this->_packetBuffer[26], this->_packetBuffer[27]);
-    this->_originSecs = (highWord << 16 | lowWord);// - SEVENZYYEARS;
-    highWord = word(this->_packetBuffer[28], this->_packetBuffer[29]);
-    lowWord = word(this->_packetBuffer[30], this->_packetBuffer[31]);
-    this->_originFraction = highWord << 16 | lowWord;
+    // Get the origin timestamp (time we sent this request)
+    highWord = word(_packetBuffer[24], _packetBuffer[25]);
+    lowWord = word(_packetBuffer[26], _packetBuffer[27]);
+    _originSecs = (highWord << 16 | lowWord) - SEVENZYYEARS;
+    highWord = word(_packetBuffer[28], _packetBuffer[29]);
+    lowWord = word(_packetBuffer[30], _packetBuffer[31]);
+    _originFraction = highWord << 16 | lowWord;
+
+    // Get the receive timestamp (time server received this request)
+    highWord = word(_packetBuffer[32], _packetBuffer[33]);
+    lowWord = word(_packetBuffer[34], _packetBuffer[35]);
+    _receiveSecs = (highWord << 16 | lowWord) - SEVENZYYEARS;
+    highWord = word(_packetBuffer[36], _packetBuffer[37]);
+    lowWord = word(_packetBuffer[38], _packetBuffer[39]);
+    _receiveFraction = highWord << 16 | lowWord;
+
+    // t1 = time request was sent (_origin)
+    // t2 = time request was received by the server (_receive)
+    // t3 = time response was sent (transmit)
+    // t4 = time response was received (_lastUpdate)
+    // Offset = ((t2 - t1) + (t3 - t4)) / 2
+    // Delay  = (t4 - t1) - (t3 - t2)
+
+    // Check if the response is stale (i.e., stray packet from a request that went out before the last one)
+    if (_originSecs!=0 && _lastSentSecs!=_originSecs && _lastSentFraction!=_originFraction) {
+      #ifdef DEBUG_NTPClient
+        Serial.println("STALE RESPONSE: server origin does not match last sent timestamp.");
+        Serial.print("lastSent =  "); Serial.print(_lastSentSecs);
+        Serial.print("; fraction = "); Serial.println(_lastSentFraction/FRACTIONSPERMILLI);
+        Serial.print("origin =    "); Serial.print(_originSecs);
+        Serial.print("; fraction = "); Serial.println(_originFraction/FRACTIONSPERMILLI);
+      #endif
+      // Try again, in case there's another response in the buffer
+      checkResponse();
+    }
 
     // Get the transmit timestamp (NTP server time when packet was sent)
     highWord = word(_packetBuffer[40], _packetBuffer[41]);
     lowWord = word(_packetBuffer[42], _packetBuffer[43]);
     // combine the 2 words (4 bytes) into a long integer to form  NTP time (seconds since Jan 1 1900)
-    unsigned long currentSecs = (highWord << 16 | lowWord);
+    _currentEpoc = (highWord << 16 | lowWord) - SEVENZYYEARS;
     // Now get the fraction of seconds in the next 4 bytes
     highWord = word(_packetBuffer[44], _packetBuffer[45]);
     lowWord = word(_packetBuffer[46], _packetBuffer[47]);
-    unsigned long currentFraction = highWord << 16 | lowWord;
+    _currentFraction = highWord << 16 | lowWord;
 
-    // Correct for network delay
+    #ifdef DEBUG_NTPClient
+      Serial.println("NTP Updating... ");
+      Serial.print("transmit =  "); Serial.print(_currentEpoc);
+      Serial.print("; fraction = "); Serial.println(_currentFraction/FRACTIONSPERMILLI);
+    #endif
+
+    // Adjust for network delay
     unsigned long netDelay = (_lastUpdate - _lastRequest) / 2;
+        - ((_currentEpoc - _receiveSecs)*1000 + (_currentFraction - _receiveFraction)/FRACTIONSPERMILLI);
 
-    this->_currentEpoc = currentSecs - SEVENZYYEARS;
-    this->_currentFraction = currentFraction;
-
-    this->_currentEpoc += netDelay / 1000;
+    _currentEpoc += netDelay / 1000;
     // Need to account for fraction rollover
-    unsigned long newFraction = this->_currentFraction + (netDelay % 1000) * FRACTIONSPERMILLI;
-    if(newFraction < this->_currentFraction)
-      this->_currentEpoc += 1;  // add one second
-    this->_currentFraction = newFraction;
+    unsigned long newFraction = _currentFraction + (netDelay % 1000) * FRACTIONSPERMILLI;
+    if(newFraction < _currentFraction)
+      _currentEpoc += 1;  // add one second
+    _currentFraction = newFraction;
 
     // if the user has set a callback function for when the time is updated, call it
     if (_updateCallback) { _updateCallback(this); }
 
     #ifdef DEBUG_NTPClient
-      Serial.println("NTP Updating... ");
-      Serial.print("reference = "); Serial.print(this->_referenceSecs);
-      Serial.print("; fraction = "); Serial.println(this->_referenceFraction/FRACTIONSPERMILLI);
-      Serial.print("origin =    "); Serial.print(this->_originSecs);
-      Serial.print("; fraction = "); Serial.println(this->_originFraction/FRACTIONSPERMILLI);
-      Serial.print("epoch =     "); Serial.print(this->_currentEpoc);
-      Serial.print("; fraction = "); Serial.println(this->_currentFraction/FRACTIONSPERMILLI);
+      Serial.print("reference = "); Serial.print(_referenceSecs);
+      Serial.print("; fraction = "); Serial.println(_referenceFraction/FRACTIONSPERMILLI);
+      Serial.print("origin =    "); Serial.print(_originSecs);
+      Serial.print("; fraction = "); Serial.println(_originFraction/FRACTIONSPERMILLI);
+      Serial.print("epoc =      "); Serial.print(_currentEpoc);
+      Serial.print("; fraction = "); Serial.println(_currentFraction/FRACTIONSPERMILLI);
       Serial.print("netDelay = "); Serial.print(netDelay); Serial.println(" ms");
     #endif
 
-    this->_lastRequest = 0; // no outstanding request
+    _lastRequest = 0; // no outstanding request
     updated = true;
   }
   return updated;
@@ -252,14 +283,14 @@ void NTPClient::setPoolServerName(const char* poolServerName) {
 
 void NTPClient::sendNTPPacket() {
   // set all bytes in the buffer to 0
-  memset(this->_packetBuffer, 0, NTP_PACKET_SIZE);
+  memset(_packetBuffer, 0, NTP_PACKET_SIZE);
   unsigned long ms_since_last = millis() - _lastUpdate;
   unsigned long tmp;
 
   // Initialize values needed to form NTP request
   // (see URL above for details on the packets)
   //this->_packetBuffer[0] = 0b11100011;   // LI, Version, Mode
-  this->_packetBuffer[0] = 0b00100011;   // LI, Version, Mode
+  _packetBuffer[0] = 0b00100011;   // LI, Version, Mode
   //this->_packetBuffer[1] = 0;     // Stratum, or type of clock
   //this->_packetBuffer[2] = 6;     // Polling Interval
   //this->_packetBuffer[3] = 0xEC;  // Peer Clock Precision
@@ -270,34 +301,32 @@ void NTPClient::sendNTPPacket() {
   //this->_packetBuffer[15]  = 52;
 
   // Set the transmit timestamp to the time we are sending this request
-  // According to the SNTP protocol, this should be copied into the origin
-  // timestamp field by the server. However, this doesn't seem to work?
-  // https://www.ietf.org/rfc/rfc2030.txt
+  // According to the SNTP protocol, this will be copied into the origin
+  // timestamp field by the server. See https://www.ietf.org/rfc/rfc2030.txt
   if(_currentEpoc > 0) {
-    tmp = _currentEpoc + SEVENZYYEARS + (ms_since_last+500)/1000;
-    this->_packetBuffer[40] = tmp << 24;
-    this->_packetBuffer[41] = tmp << 16;
-    this->_packetBuffer[42] = tmp << 8;
-    this->_packetBuffer[43] = tmp;
+    _lastSentSecs = _currentEpoc + SEVENZYYEARS + (ms_since_last+500)/1000;
+    _packetBuffer[40] = _lastSentSecs >> 24;
+    _packetBuffer[41] = _lastSentSecs >> 16;
+    _packetBuffer[42] = _lastSentSecs >> 8;
+    _packetBuffer[43] = _lastSentSecs;
     #ifdef DEBUG_NTPClient
-      Serial.print("sent origin =     "); Serial.print(tmp-SEVENZYYEARS);
+      Serial.print("sent origin =     "); Serial.print(_lastSentSecs-SEVENZYYEARS);
     #endif
-    tmp = _currentFraction + ms_since_last * FRACTIONSPERMILLI;
-    this->_packetBuffer[44] = tmp << 24;
-    this->_packetBuffer[45] = tmp << 16;
-    this->_packetBuffer[46] = tmp << 8;
-    this->_packetBuffer[47] = tmp;
+    _lastSentFraction = _currentFraction + ms_since_last * FRACTIONSPERMILLI;
+    _packetBuffer[44] = _lastSentFraction >> 24;
+    _packetBuffer[45] = _lastSentFraction >> 16;
+    _packetBuffer[46] = _lastSentFraction >> 8;
+    _packetBuffer[47] = _lastSentFraction;
     #ifdef DEBUG_NTPClient
-      Serial.print("; fraction = "); Serial.println(tmp/FRACTIONSPERMILLI);
+      Serial.print("; fraction = "); Serial.println(_lastSentFraction/FRACTIONSPERMILLI);
     #endif
   }
 
   // all NTP fields have been given values, now
   // you can send a packet requesting a timestamp:
-  this->_udp->beginPacket(this->_poolServerName, 123); //NTP requests are to port 123
-  this->_udp->write(this->_packetBuffer, NTP_PACKET_SIZE);
-  this->_udp->endPacket();
+  _udp->beginPacket(this->_poolServerName, 123); //NTP requests are to port 123
+  _udp->write(this->_packetBuffer, NTP_PACKET_SIZE);
+  _udp->endPacket();
 
-  this->_lastRequest = millis();
-
+  _lastRequest = millis();
 }

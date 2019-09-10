@@ -31,6 +31,10 @@ class NTPClient {
     unsigned long _referenceFraction = 0;
     unsigned long _originSecs = 0;
     unsigned long _originFraction = 0;
+    unsigned long _receiveSecs = 0;
+    unsigned long _receiveFraction = 0;
+    unsigned long _lastSentSecs = 0;
+    unsigned long _lastSentFraction = 0;
 
 
     unsigned long _lastUpdate     = 0;      // In ms
