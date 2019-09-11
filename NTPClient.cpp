@@ -19,8 +19,8 @@
  * SOFTWARE.
  */
 
-//#include "NTPClient.h"
-#define DEBUG_NTPClient 1
+#include "NTPClient.h"
+//#define DEBUG_NTPClient 1
 
 NTPClient::NTPClient(UDP& udp) {
   this->_udp            = &udp;
@@ -97,6 +97,8 @@ bool NTPClient::checkResponse() {
     // t4 = time response was received (_lastUpdate)
     // Offset = ((t2 - t1) + (t3 - t4)) / 2
     // Delay  = (t4 - t1) - (t3 - t2)
+    // But we'll take a simpler approach, by computing the net delay in milliseconds using
+    // the millis clock recording of sent/received.
 
     // Check if the response is stale (i.e., stray packet from a request that went out before the last one)
     if (_originSecs!=0 && _lastSentSecs!=_originSecs && _lastSentFraction!=_originFraction) {
@@ -107,7 +109,9 @@ bool NTPClient::checkResponse() {
         Serial.print("origin =    "); Serial.print(_originSecs);
         Serial.print("; fraction = "); Serial.println(_originFraction/FRACTIONSPERMILLI);
       #endif
-      // Try again, in case there's another response in the buffer
+      // Try again, in case there's another response in the buffer. This can happen if
+      // we timeout and send another request, and the timed-out reqest eventually generates
+      // a response.
       checkResponse();
     }
 
