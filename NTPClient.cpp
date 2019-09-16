@@ -132,12 +132,15 @@ bool NTPClient::checkResponse() {
     #endif
 
     // Adjust for network delay
-    unsigned long netDelay = (_lastUpdate - _lastRequest) / 2;
-        - ((_currentEpoc - _receiveSecs)*1000 + (_currentFraction - _receiveFraction)/FRACTIONSPERMILLI);
+    // This should be half the round-trip delay. However, if the update function isn't called frequently,
+    // the perceived delay will reflect that interval rather than the true delay. E.g., if update is called
+    // only every 2 seconds, the perceived delay will always be about 2 seconds.
+    _lastSentDelay = (_lastUpdate - _lastRequest + 1) / 2;
+    //- ((_currentEpoc - _receiveSecs)*1000 + (_currentFraction - _receiveFraction)/FRACTIONSPERMILLI);
 
-    _currentEpoc += netDelay / 1000;
+    _currentEpoc += _lastSentDelay / 1000;
     // Need to account for fraction rollover
-    unsigned long newFraction = _currentFraction + (netDelay % 1000) * FRACTIONSPERMILLI;
+    unsigned long newFraction = _currentFraction + (_lastSentDelay % 1000) * FRACTIONSPERMILLI;
     if(newFraction < _currentFraction)
       _currentEpoc += 1;  // add one second
     _currentFraction = newFraction;
@@ -150,9 +153,11 @@ bool NTPClient::checkResponse() {
       Serial.print("; fraction = "); Serial.println(_referenceFraction/FRACTIONSPERMILLI);
       Serial.print("origin =    "); Serial.print(_originSecs);
       Serial.print("; fraction = "); Serial.println(_originFraction/FRACTIONSPERMILLI);
+      Serial.print("receive =   "); Serial.print(_receiveSecs);
+      Serial.print("; fraction = "); Serial.println(_receiveFraction/FRACTIONSPERMILLI);
       Serial.print("epoc =      "); Serial.print(_currentEpoc);
       Serial.print("; fraction = "); Serial.println(_currentFraction/FRACTIONSPERMILLI);
-      Serial.print("netDelay = "); Serial.print(netDelay); Serial.println(" ms");
+      Serial.print("netDelay = "); Serial.print(_lastSentDelay); Serial.println(" ms");
     #endif
 
     _lastRequest = 0; // no outstanding request
